@@ -64,6 +64,12 @@ Telegram‑бот, который выдаёт VPN‑ключи (vless/vmess) т
    sudo systemctl status simple-vpn-bot
    ```
 
+6. Дальнейшие обновления с локальной машины — одной командой:
+   ```bash
+   make deploy SERVER=user@твой-сервер
+   ```
+   При необходимости укажи путь к проекту на сервере: `make deploy SERVER=user@host DEPLOY_PATH=/home/user/simple_vpn_bot`.
+
 ### Вариант 2: Docker
 
 В корне можно добавить `Dockerfile`:
