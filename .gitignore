@@ -1,0 +1,29 @@
+# Секреты — никогда не коммитить
+.env
+.env.local
+.env.*.local
+
+# Сборка
+/simple_vpn_bot
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go
+/vendor/
+*.test
+*.out
+go.work
+
+# IDE и ОС
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Логи (если появятся)
+*.log
