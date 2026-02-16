@@ -12,11 +12,11 @@ Telegram‑бот, который выдаёт VPN‑ключи (vless/vmess) т
 
 2. Запуск:
    ```bash
-   go run .
+   make build && make deploy
    ```
-   Или с автоперезапуском: `make run`
+   Или без сборки: `go run .`; с автоперезапуском: `make run`
 
-## Деплой на прод
+## Деплой на прод (VPS / systemd)
 
 ### Вариант 1: VPS (systemd)
 
@@ -63,12 +63,6 @@ Telegram‑бот, который выдаёт VPN‑ключи (vless/vmess) т
    sudo systemctl start simple-vpn-bot
    sudo systemctl status simple-vpn-bot
    ```
-
-6. Дальнейшие обновления с локальной машины — одной командой:
-   ```bash
-   make deploy SERVER=user@твой-сервер
-   ```
-   При необходимости укажи путь к проекту на сервере: `make deploy SERVER=user@host DEPLOY_PATH=/home/user/simple_vpn_bot`.
 
 ### Вариант 2: Docker
 
