@@ -25,5 +25,6 @@ go.work
 .DS_Store
 Thumbs.db
 
-# Логи (если появятся)
+# Логи и PID
 *.log
+bot.pid

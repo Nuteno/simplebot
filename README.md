@@ -11,12 +11,24 @@ Telegram‑бот, который выдаёт VPN‑ключи (vless/vmess) т
    ```
 
 2. Запуск:
-   ```bash
-   make build && make deploy
-   ```
-   Или без сборки: `go run .`; с автоперезапуском: `make run`
+   - В консоли (закроется при выходе): `make build && make deploy`
+   - В фоне (продолжит работать после выхода): `make start` — логи в `bot.log`, остановка: `make stop`
+   - Без сборки: `go run .`; с автоперезапуском: `make run`
 
 ## Деплой на прод (VPS / systemd)
+
+### Установка Go на сервере (один раз)
+
+Если `go` не найден при `make build`, установи Go:
+
+```bash
+# Linux amd64
+curl -sL https://go.dev/dl/go1.22.4.linux-amd64.tar.gz | sudo tar -C /usr/local -xzf -
+echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc && source ~/.bashrc
+
+# Linux arm64 (если сервер на ARM)
+# curl -sL https://go.dev/dl/go1.22.4.linux-arm64.tar.gz | sudo tar -C /usr/local -xzf -
+```
 
 ### Вариант 1: VPS (systemd)
 
