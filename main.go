@@ -11,36 +11,31 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// parseAllowedUserIDs читает ALLOWED_USER_IDS (через запятую) или одиночный ALLOWED_USER_ID.
+// parseAllowedUserIDs читает ALLOWED_USER_IDS (через запятую), иначе ALLOWED_USER_ID.
+// В обеих переменных можно указать один ID или несколько через запятую.
 func parseAllowedUserIDs() (map[int64]struct{}, error) {
 	out := make(map[int64]struct{})
 	raw := strings.TrimSpace(os.Getenv("ALLOWED_USER_IDS"))
-	if raw != "" {
-		for _, part := range strings.Split(raw, ",") {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
-			id, err := strconv.ParseInt(part, 10, 64)
-			if err != nil {
-				return nil, err
-			}
-			out[id] = struct{}{}
-		}
-		if len(out) == 0 {
-			return nil, nil
-		}
-		return out, nil
+	if raw == "" {
+		raw = strings.TrimSpace(os.Getenv("ALLOWED_USER_ID"))
 	}
-	single := strings.TrimSpace(os.Getenv("ALLOWED_USER_ID"))
-	if single == "" {
+	if raw == "" {
 		return nil, nil
 	}
-	id, err := strconv.ParseInt(single, 10, 64)
-	if err != nil {
-		return nil, err
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(part, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		out[id] = struct{}{}
 	}
-	out[id] = struct{}{}
+	if len(out) == 0 {
+		return nil, nil
+	}
 	return out, nil
 }
 
@@ -69,7 +64,7 @@ const (
 		"3. Скопируйте выданный ключ и импортируйте его в своё VPN‑приложение.\n\n" +
 		"Ключи зашиты напрямую в код бота и не зависят от базы данных или внешних сервисов."
 
-	textStart = "👋 Привет! Этот бот выдаёт VPN‑ключ только авторизованным пользователю.\n\n" +
+	textStart = "👋 Привет! Этот бот выдаёт VPN‑ключ только авторизованным пользователям.\n\n" +
 		"Используйте кнопки ниже, чтобы получить инструкцию или VPN‑ключ."
 
 	textAccessDenied = "⛔ У вас нет доступа к этому боту."
@@ -120,16 +115,24 @@ func main() {
 	updates := bot.GetUpdatesChan(u)
 
 	for update := range updates {
-		// Общая проверка доступа по user_id
-		if !isAllowed(update) {
-			denyAccess(bot, update)
+		uid, hasActor := actorUserID(update)
+		if hasActor {
+			if _, ok := allowedUserIDs[uid]; !ok {
+				denyAccess(bot, update)
+				continue
+			}
+		} else {
+			// Редактирование, реакции, my_chat_member и т.п. без поля From в этом апдейте —
+			// не считаем «взломом» и не шлём «нет доступа».
 			continue
 		}
 
 		if update.Message != nil {
 			handleMessage(bot, update.Message)
 		}
-
+		if update.EditedMessage != nil {
+			handleMessage(bot, update.EditedMessage)
+		}
 		if update.CallbackQuery != nil {
 			handleCallback(bot, update.CallbackQuery)
 		}
@@ -179,19 +182,20 @@ func loadEnvFile(path string) {
 	}
 }
 
-// Проверка, что апдейт пришёл от разрешённого пользователя.
-func isAllowed(update tgbotapi.Update) bool {
-	var id int64
+// actorUserID возвращает Telegram user_id инициатора апдейта, если он есть.
+// Важно: при редактировании сообщения приходит edited_message, а не message —
+// раньше из‑за этого доступ «пропадал» и показывался отказ.
+func actorUserID(update tgbotapi.Update) (int64, bool) {
 	switch {
 	case update.Message != nil && update.Message.From != nil:
-		id = update.Message.From.ID
+		return update.Message.From.ID, true
+	case update.EditedMessage != nil && update.EditedMessage.From != nil:
+		return update.EditedMessage.From.ID, true
 	case update.CallbackQuery != nil && update.CallbackQuery.From != nil:
-		id = update.CallbackQuery.From.ID
+		return update.CallbackQuery.From.ID, true
 	default:
-		return false
+		return 0, false
 	}
-	_, ok := allowedUserIDs[id]
-	return ok
 }
 
 // Отправляем отказ в доступе всем, кроме разрешённого пользователя.
@@ -201,6 +205,8 @@ func denyAccess(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	switch {
 	case update.Message != nil:
 		chatID = update.Message.Chat.ID
+	case update.EditedMessage != nil:
+		chatID = update.EditedMessage.Chat.ID
 	case update.CallbackQuery != nil && update.CallbackQuery.Message != nil:
 		chatID = update.CallbackQuery.Message.Chat.ID
 	default:
