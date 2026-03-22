@@ -11,29 +11,65 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// parseAllowedUserIDs читает ALLOWED_USER_IDS (через запятую) или одиночный ALLOWED_USER_ID.
+func parseAllowedUserIDs() (map[int64]struct{}, error) {
+	out := make(map[int64]struct{})
+	raw := strings.TrimSpace(os.Getenv("ALLOWED_USER_IDS"))
+	if raw != "" {
+		for _, part := range strings.Split(raw, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			id, err := strconv.ParseInt(part, 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			out[id] = struct{}{}
+		}
+		if len(out) == 0 {
+			return nil, nil
+		}
+		return out, nil
+	}
+	single := strings.TrimSpace(os.Getenv("ALLOWED_USER_ID"))
+	if single == "" {
+		return nil, nil
+	}
+	id, err := strconv.ParseInt(single, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	out[id] = struct{}{}
+	return out, nil
+}
+
 // Чувствительные данные читаем из переменных окружения / .env.
 var (
 	// TELEGRAM_BOT_TOKEN — токен бота от @BotFather.
 	botToken string
 
-	// ALLOWED_USER_ID — единственный пользователь, который может пользоваться ботом.
-	// Узнать свой ID можно, например, через @userinfobot или любой другой сервис.
-	allowedUserID int64
+	// allowedUserIDs — пользователи, которым разрешён доступ к боту (ALLOWED_USER_IDS или ALLOWED_USER_ID).
+	allowedUserIDs map[int64]struct{}
 
-	// VPN_KEY_RUSSIA и VPN_KEY_NETHERLANDS — VPN‑ключи для разных стран.
+	// VPN_KEY_* — VPN‑ключи для разных стран.
 	vpnKeyRussia      string
 	vpnKeyNetherlands string
+	vpnKeyUAE         string
+	vpnKeyTurkey      string
+	vpnKeySingapore   string
+	vpnKeyKazakhstan  string
 )
 
 // Тексты сообщений
 const (
 	textInstruction = "📖 Инструкция по использованию VPN:\n\n" +
 		"1. Нажмите кнопку «Получить VPN».\n" +
-		"2. Выберите нужную страну: Россия или Нидерланды.\n" +
+		"2. Выберите нужную страну в списке.\n" +
 		"3. Скопируйте выданный ключ и импортируйте его в своё VPN‑приложение.\n\n" +
 		"Ключи зашиты напрямую в код бота и не зависят от базы данных или внешних сервисов."
 
-	textStart = "👋 Привет! Этот бот выдаёт VPN‑ключ только одному авторизованному пользователю.\n\n" +
+	textStart = "👋 Привет! Этот бот выдаёт VPN‑ключ только авторизованным пользователю.\n\n" +
 		"Используйте кнопки ниже, чтобы получить инструкцию или VPN‑ключ."
 
 	textAccessDenied = "⛔ У вас нет доступа к этому боту."
@@ -50,23 +86,25 @@ func main() {
 	loadEnvFile(".env")
 
 	botToken = os.Getenv("TELEGRAM_BOT_TOKEN")
-	allowedUserIDStr := os.Getenv("ALLOWED_USER_ID")
 	vpnKeyRussia = os.Getenv("VPN_KEY_RUSSIA")
 	vpnKeyNetherlands = os.Getenv("VPN_KEY_NETHERLANDS")
+	vpnKeyUAE = os.Getenv("VPN_KEY_UAE")
+	vpnKeyTurkey = os.Getenv("VPN_KEY_TURKEY")
+	vpnKeySingapore = os.Getenv("VPN_KEY_SINGAPORE")
+	vpnKeyKazakhstan = os.Getenv("VPN_KEY_KAZAKHSTAN")
 
 	if botToken == "" {
 		log.Fatal("Переменная окружения TELEGRAM_BOT_TOKEN не задана")
 	}
 
-	if allowedUserIDStr == "" {
-		log.Fatal("Переменная окружения ALLOWED_USER_ID не задана")
-	}
-
-	parsedUserID, err := strconv.ParseInt(allowedUserIDStr, 10, 64)
+	var err error
+	allowedUserIDs, err = parseAllowedUserIDs()
 	if err != nil {
-		log.Fatalf("ALLOWED_USER_ID должна быть числом (int64): %v", err)
+		log.Fatalf("Некорректный список разрешённых пользователей: %v", err)
 	}
-	allowedUserID = parsedUserID
+	if len(allowedUserIDs) == 0 {
+		log.Fatal("Задайте ALLOWED_USER_IDS (через запятую) или ALLOWED_USER_ID")
+	}
 
 	bot, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
@@ -143,14 +181,17 @@ func loadEnvFile(path string) {
 
 // Проверка, что апдейт пришёл от разрешённого пользователя.
 func isAllowed(update tgbotapi.Update) bool {
+	var id int64
 	switch {
 	case update.Message != nil && update.Message.From != nil:
-		return update.Message.From.ID == allowedUserID
+		id = update.Message.From.ID
 	case update.CallbackQuery != nil && update.CallbackQuery.From != nil:
-		return update.CallbackQuery.From.ID == allowedUserID
+		id = update.CallbackQuery.From.ID
 	default:
 		return false
 	}
+	_, ok := allowedUserIDs[id]
+	return ok
 }
 
 // Отправляем отказ в доступе всем, кроме разрешённого пользователя.
@@ -206,9 +247,17 @@ func handleMessage(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 func handleCallback(bot *tgbotapi.BotAPI, cb *tgbotapi.CallbackQuery) {
 	switch cb.Data {
 	case "country_russia":
-		sendVPNKey(bot, cb.Message.Chat.ID, "🇷🇺 Россия", vpnKeyRussia)
+		sendVPNKey(bot, cb.Message.Chat.ID, cb.From.ID, "🇷🇺 Россия", vpnKeyRussia)
 	case "country_netherlands":
-		sendVPNKey(bot, cb.Message.Chat.ID, "🇳🇱 Нидерланды", vpnKeyNetherlands)
+		sendVPNKey(bot, cb.Message.Chat.ID, cb.From.ID, "🇳🇱 Нидерланды", vpnKeyNetherlands)
+	case "country_uae":
+		sendVPNKey(bot, cb.Message.Chat.ID, cb.From.ID, "🇦🇪 ОАЭ", vpnKeyUAE)
+	case "country_turkey":
+		sendVPNKey(bot, cb.Message.Chat.ID, cb.From.ID, "🇹🇷 Турция", vpnKeyTurkey)
+	case "country_singapore":
+		sendVPNKey(bot, cb.Message.Chat.ID, cb.From.ID, "🇸🇬 Сингапур", vpnKeySingapore)
+	case "country_kazakhstan":
+		sendVPNKey(bot, cb.Message.Chat.ID, cb.From.ID, "🇰🇿 Казахстан", vpnKeyKazakhstan)
 	default:
 		// Неизвестный callback — игнорируем.
 	}
@@ -242,6 +291,14 @@ func sendCountrySelection(bot *tgbotapi.BotAPI, chatID int64) {
 			tgbotapi.NewInlineKeyboardButtonData("🇷🇺 Россия", "country_russia"),
 			tgbotapi.NewInlineKeyboardButtonData("🇳🇱 Нидерланды", "country_netherlands"),
 		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🇦🇪 ОАЭ", "country_uae"),
+			tgbotapi.NewInlineKeyboardButtonData("🇹🇷 Турция", "country_turkey"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🇸🇬 Сингапур", "country_singapore"),
+			tgbotapi.NewInlineKeyboardButtonData("🇰🇿 Казахстан", "country_kazakhstan"),
+		),
 	)
 
 	msg := tgbotapi.NewMessage(chatID, "Выберите страну для получения VPN‑ключа:")
@@ -253,7 +310,7 @@ func sendCountrySelection(bot *tgbotapi.BotAPI, chatID int64) {
 }
 
 // Отправка конкретного VPN‑ключа.
-func sendVPNKey(bot *tgbotapi.BotAPI, chatID int64, countryLabel, key string) {
+func sendVPNKey(bot *tgbotapi.BotAPI, chatID, fromUserID int64, countryLabel, key string) {
 	if key == "" {
 		msg := tgbotapi.NewMessage(chatID, "Ключ для "+countryLabel+" ещё не настроен. Обратитесь к администратору.")
 		if _, err := bot.Send(msg); err != nil {
@@ -279,6 +336,6 @@ func sendVPNKey(bot *tgbotapi.BotAPI, chatID int64, countryLabel, key string) {
 	}
 
 	// Дополнительно можно отправить напоминание или лог.
-	log.Printf("Выдан VPN‑ключ для %s пользователю %d в %s", countryLabel, allowedUserID, time.Now().Format(time.RFC3339))
+	log.Printf("Выдан VPN‑ключ для %s пользователю %d в %s", countryLabel, fromUserID, time.Now().Format(time.RFC3339))
 }
 
