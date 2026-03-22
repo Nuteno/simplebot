@@ -2,7 +2,10 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"log"
+	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -10,6 +13,29 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+// telegramHTTPClient — клиент с исходящими соединениями только по IPv4.
+// На части VPS IPv6 до api.telegram.org маршрутизируется с таймаутом TLS, тогда как IPv4 работает (curl тоже часто берёт A‑запись).
+func telegramHTTPClient() *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "tcp4", addr)
+		},
+		ForceAttemptHTTP2:   true,
+		MaxIdleConns:        100,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 30 * time.Second,
+	}
+	return &http.Client{
+		Transport: transport,
+		Timeout:   90 * time.Second,
+	}
+}
 
 // parseAllowedUserIDs читает ALLOWED_USER_IDS (через запятую), иначе ALLOWED_USER_ID.
 // В обеих переменных можно указать один ID или несколько через запятую.
@@ -64,7 +90,7 @@ const (
 		"3. Скопируйте выданный ключ и импортируйте его в своё VPN‑приложение.\n\n" +
 		"Ключи зашиты напрямую в код бота и не зависят от базы данных или внешних сервисов."
 
-	textStart = "👋 Привет! Этот бот выдаёт VPN‑ключ только авторизованным пользователям.\n\n" +
+	textStart = "👋 Привет! Этот бот выдаёт VPN‑ключ только авторизованным пользователю.\n\n" +
 		"Используйте кнопки ниже, чтобы получить инструкцию или VPN‑ключ."
 
 	textAccessDenied = "⛔ У вас нет доступа к этому боту."
@@ -101,7 +127,7 @@ func main() {
 		log.Fatal("Задайте ALLOWED_USER_IDS (через запятую) или ALLOWED_USER_ID")
 	}
 
-	bot, err := tgbotapi.NewBotAPI(botToken)
+	bot, err := tgbotapi.NewBotAPIWithClient(botToken, tgbotapi.APIEndpoint, telegramHTTPClient())
 	if err != nil {
 		log.Fatalf("Ошибка создания бота: %v", err)
 	}
