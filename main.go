@@ -90,7 +90,7 @@ const (
 		"3. Скопируйте выданный ключ и импортируйте его в своё VPN‑приложение.\n\n" +
 		"Ключи зашиты напрямую в код бота и не зависят от базы данных или внешних сервисов."
 
-	textStart = "👋 Привет! Этот бот выдаёт VPN‑ключ только авторизованным пользователю.\n\n" +
+	textStart = "👋 Привет! Этот бот выдаёт VPN‑ключ только авторизованным пользователям.\n\n" +
 		"Используйте кнопки ниже, чтобы получить инструкцию или VPN‑ключ."
 
 	textAccessDenied = "⛔ У вас нет доступа к этому боту."
@@ -127,6 +127,8 @@ func main() {
 		log.Fatal("Задайте ALLOWED_USER_IDS (через запятую) или ALLOWED_USER_ID")
 	}
 
+	mustSingleInstance(botToken)
+
 	bot, err := tgbotapi.NewBotAPIWithClient(botToken, tgbotapi.APIEndpoint, telegramHTTPClient())
 	if err != nil {
 		log.Fatalf("Ошибка создания бота: %v", err)
@@ -134,6 +136,11 @@ func main() {
 
 	bot.Debug = false
 	log.Printf("Бот запущен как @%s", bot.Self.UserName)
+
+	// Long polling не работает, пока активен webhook; снимаем на всякий случай.
+	if _, err := bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: false}); err != nil {
+		log.Printf("deleteWebhook: %v", err)
+	}
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
@@ -144,6 +151,7 @@ func main() {
 		uid, hasActor := actorUserID(update)
 		if hasActor {
 			if _, ok := allowedUserIDs[uid]; !ok {
+				log.Printf("Доступ запрещён: user_id=%d", uid)
 				denyAccess(bot, update)
 				continue
 			}
