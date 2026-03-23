@@ -1,3 +1,17 @@
+DOCKER := $(shell command -v docker 2>/dev/null)
+DOCKER_COMPOSE_BIN := $(shell command -v docker-compose 2>/dev/null)
+DOCKER_COMPOSE_PLUGIN_OK := $(shell docker compose version >/dev/null 2>&1 && echo yes)
+
+ifeq ($(DOCKER),)
+COMPOSE_CMD := @echo "Docker не установлен. Установите docker.io (и docker-compose-plugin)"; false
+else ifneq ($(DOCKER_COMPOSE_BIN),)
+COMPOSE_CMD := docker-compose
+else ifeq ($(DOCKER_COMPOSE_PLUGIN_OK),yes)
+COMPOSE_CMD := docker compose
+else
+COMPOSE_CMD := @echo "Docker Compose не найден. Установите docker-compose-plugin или docker-compose"; false
+endif
+
 build:
 	go build -o simple_vpn_bot .
 
@@ -5,22 +19,22 @@ deploy: build
 	./simple_vpn_bot
 
 docker-build:
-	docker compose build bot
+	$(COMPOSE_CMD) build bot
 
 docker-up:
-	docker compose up -d --build bot
+	$(COMPOSE_CMD) up -d --build bot
 
 docker-down:
-	docker compose down
+	$(COMPOSE_CMD) down
 
 docker-restart:
-	docker compose restart bot
+	$(COMPOSE_CMD) restart bot
 
 docker-logs:
-	docker compose logs -f --tail=200 bot
+	$(COMPOSE_CMD) logs -f --tail=200 bot
 
 docker-status:
-	docker compose ps
+	$(COMPOSE_CMD) ps
 
 # Запуск в фоне: не умрёт при выходе из консоли. Логи — bot.log
 start: build
