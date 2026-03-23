@@ -4,6 +4,24 @@ build:
 deploy: build
 	./simple_vpn_bot
 
+docker-build:
+	docker compose build bot
+
+docker-up:
+	docker compose up -d --build bot
+
+docker-down:
+	docker compose down
+
+docker-restart:
+	docker compose restart bot
+
+docker-logs:
+	docker compose logs -f --tail=200 bot
+
+docker-status:
+	docker compose ps
+
 # Запуск в фоне: не умрёт при выходе из консоли. Логи — bot.log
 start: build
 	@nohup ./simple_vpn_bot >> bot.log 2>&1 & echo $$! > bot.pid && echo "Бот запущен в фоне (PID $$(cat bot.pid)). Логи: tail -f bot.log"
